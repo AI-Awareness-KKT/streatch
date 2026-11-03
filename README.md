@@ -1,4 +1,4 @@
-# Gum-Gum Funny Face
+# Stretch
 
 A browser webcam playground with hand-controlled head and face effects.
 
