@@ -1,0 +1,8 @@
+{
+  "name": "gum-gum-funny-face",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/face-engine.test.mjs"
+  }
+}
