@@ -85,6 +85,21 @@ export class FacePinchState{
       this.slots.set(savedId,{...slot,id:savedId,mode:'held',settings:settings?{...settings}:undefined});
     }else slot.mode='spring';
   }
+  beginHand(id,point,face,settings){
+    if(!face)return false;
+    if(this.begin(id,point,face,settings))return true;
+    let target;
+    if(settings?.scope==='head'){
+      const frame=headFrame(face,settings.headReach,settings.headShift);
+      const dx=point.x-frame.center.x,dy=point.y-frame.center.y;
+      let u=(dx*frame.ux.x+dy*frame.ux.y)/frame.rx,v=(dx*frame.uy.x+dy*frame.uy.y)/frame.ry;
+      const length=Math.max(1,Math.hypot(u,v));u/=length;v/=length;
+      target={x:frame.center.x+frame.ux.x*u*frame.rx+frame.uy.x*v*frame.ry,y:frame.center.y+frame.ux.y*u*frame.rx+frame.uy.y*v*frame.ry};
+    }else target=face.points.reduce((best,p)=>distance(p,point)<distance(best,point)?p:best);
+    if(!this.begin(id,target,face,settings))return false;
+    // The feature stays on the face, while movement starts at the actual fingers.
+    this.slots.get(id).origin={...point};return true;
+  }
   updateHands(hands,face,now,hold,settings){
     const visible=new Set();
     for(const hand of hands){
@@ -94,7 +109,7 @@ export class FacePinchState{
       const ratio=distance(p[4],p[8])/Math.max(25,distance(p[5],p[17]));
       const previous=this.latches.get(hand.id);
       const closed=previous?.closed?ratio<.68:ratio<.40;
-      if(closed&&!previous?.closed)this.begin(hand.id,midpoint,face,settings);
+      if(closed&&this.slots.get(hand.id)?.mode!=='active')this.beginHand(hand.id,midpoint,face,settings);
       if(closed)this.move(hand.id,midpoint,face);
       else this.release(hand.id,hold,settings);
       this.latches.set(hand.id,{closed,seen:now,midpoint});
