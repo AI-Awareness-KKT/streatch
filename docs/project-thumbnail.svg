@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+<title id="title">Stretch</title><desc id="desc">A smiling face with cheeks stretched outward by two pinch gestures.</desc>
+<rect width="640" height="420" rx="24" fill="#e5eff9"/><rect x="22" y="22" width="596" height="376" rx="20" fill="#143e70"/>
+<g fill="none" stroke="#9cc7ef" stroke-width="2" stroke-dasharray="7 7"><ellipse cx="320" cy="218" rx="148" ry="134"/><path d="M93 214h78m298 0h78"/></g>
+<path d="M226 143q14-56 94-56t94 56l18 49q80 13 85 43t-88 29q-24 87-109 87t-109-87q-93-1-88-29t85-43z" fill="#f6c69e"/>
+<path d="M221 161q9-83 98-83 98 0 104 93-27-23-41-46-56 42-161 36z" fill="#253048"/>
+<ellipse cx="275" cy="215" rx="12" ry="17" fill="#263449"/><ellipse cx="366" cy="215" rx="12" ry="17" fill="#263449"/>
+<path d="M285 268q36 35 71 0" fill="none" stroke="#a55a54" stroke-width="8" stroke-linecap="round"/>
+<g fill="none" stroke="#7df1c9" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><path d="m106 181 32 32-32 32m428-64-32 32 32 32"/></g>
+<g fill="#ffd878" stroke="#fff" stroke-width="2"><circle cx="153" cy="232" r="7"/><circle cx="487" cy="232" r="7"/></g>
+<text x="320" y="381" fill="#fff" font-family="Arial,sans-serif" font-size="25" font-weight="bold" text-anchor="middle" letter-spacing="3">STRETCH</text>
+</svg>
