@@ -38,7 +38,8 @@ No pip or npm installation is required to run the app.
 - Stretch, Inflate, Shrink and Twist using up to two tracked hands.
 - Whole-head or face-only selection, adjustable head coverage and left/right outline alignment.
 - Multiple saved effects with Keep shape, Undo last and Reset face.
-- Automatic guide hiding after editing starts.
+- Dotted guides for face-only and whole-head modes stay visible during editing.
+- Thumb–index pinch anywhere in view grabs the nearest feature; hold and move to apply the selected tool, then open to release.
 - Big head preset, original comparison and clean PNG photo export.
 - Mouse/touch illustration demo without webcam access.
 
@@ -47,13 +48,15 @@ camera frame, and adjust coverage/alignment for your hairstyle.
 
 ## Source files
 
-- `docs/index.html`: interface and styling.
+- `docs/index.html`: project overview.
+- `docs/play.html`: camera interface and styling.
 - `docs/app.mjs`: camera, tracking, interaction and photo export.
 - `docs/face-engine.mjs`: gestures, head geometry and image warping.
 - `docs/face-demo.mjs`: interactive illustrated demo.
 - `docs/engine.mjs`: retained original hand-tube effect math.
 - `docs/vendor/`: bundled MediaPipe JavaScript, WASM and model assets.
-- `tests/face-engine.test.mjs`: 17 regression tests.
+- `tests/face-engine.test.mjs`: effect and gesture regression tests.
+- `tests/tracking-alignment.test.mjs`: tracking, dotted guides, and thumb–index pinch regressions (33 tests total).
 
 ## Optional tests
 
