@@ -10,7 +10,16 @@ export function fitVideo(width,height){
   const scale=Math.min(W/width,H/height),w=width*scale,h=height*scale;
   return {x:(W-w)/2,y:(H-h)/2,width:w,height:h};
 }
-export function headFrame(face,reach=1.15,horizontalShift=.1){
+// Tracking runs on a snapshot of the displayed canvas, including its mirror and letterbox.
+export function canvasLandmarks(points){
+  return points.map(point=>({x:point.x*W,y:point.y*H}));
+}
+// MediaPipe FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, in connected order.
+const FACE_OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+export function faceContour(face){
+  return face?.points.length>=468?FACE_OVAL.map(index=>face.points[index]):null;
+}
+export function headFrame(face,reach=1.15,horizontalShift=0){
   if(!face)return null;
   const top=face.points.length>=468?face.points[10]:{x:(face.left+face.right)/2,y:face.top};
   const chin=face.points.length>=468?face.points[152]:{x:(face.left+face.right)/2,y:face.bottom};
