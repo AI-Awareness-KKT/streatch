@@ -10,16 +10,7 @@ export function fitVideo(width,height){
   const scale=Math.min(W/width,H/height),w=width*scale,h=height*scale;
   return {x:(W-w)/2,y:(H-h)/2,width:w,height:h};
 }
-// Tracking runs on a snapshot of the displayed canvas, including its mirror and letterbox.
-export function canvasLandmarks(points){
-  return points.map(point=>({x:point.x*W,y:point.y*H}));
-}
-// MediaPipe FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, in connected order.
-const FACE_OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-export function faceContour(face){
-  return face?.points.length>=468?FACE_OVAL.map(index=>face.points[index]):null;
-}
-export function headFrame(face,reach=1.15,horizontalShift=0){
+export function headFrame(face,reach=1.15,horizontalShift=.1){
   if(!face)return null;
   const top=face.points.length>=468?face.points[10]:{x:(face.left+face.right)/2,y:face.top};
   const chin=face.points.length>=468?face.points[152]:{x:(face.left+face.right)/2,y:face.bottom};
@@ -85,21 +76,6 @@ export class FacePinchState{
       this.slots.set(savedId,{...slot,id:savedId,mode:'held',settings:settings?{...settings}:undefined});
     }else slot.mode='spring';
   }
-  beginHand(id,point,face,settings){
-    if(!face)return false;
-    if(this.begin(id,point,face,settings))return true;
-    let target;
-    if(settings?.scope==='head'){
-      const frame=headFrame(face,settings.headReach,settings.headShift);
-      const dx=point.x-frame.center.x,dy=point.y-frame.center.y;
-      let u=(dx*frame.ux.x+dy*frame.ux.y)/frame.rx,v=(dx*frame.uy.x+dy*frame.uy.y)/frame.ry;
-      const length=Math.max(1,Math.hypot(u,v));u/=length;v/=length;
-      target={x:frame.center.x+frame.ux.x*u*frame.rx+frame.uy.x*v*frame.ry,y:frame.center.y+frame.ux.y*u*frame.rx+frame.uy.y*v*frame.ry};
-    }else target=face.points.reduce((best,p)=>distance(p,point)<distance(best,point)?p:best);
-    if(!this.begin(id,target,face,settings))return false;
-    // The feature stays on the face, while movement starts at the actual fingers.
-    this.slots.get(id).origin={...point};return true;
-  }
   updateHands(hands,face,now,hold,settings){
     const visible=new Set();
     for(const hand of hands){
@@ -109,7 +85,7 @@ export class FacePinchState{
       const ratio=distance(p[4],p[8])/Math.max(25,distance(p[5],p[17]));
       const previous=this.latches.get(hand.id);
       const closed=previous?.closed?ratio<.68:ratio<.40;
-      if(closed&&this.slots.get(hand.id)?.mode!=='active')this.beginHand(hand.id,midpoint,face,settings);
+      if(closed&&!previous?.closed)this.begin(hand.id,midpoint,face,settings);
       if(closed)this.move(hand.id,midpoint,face);
       else this.release(hand.id,hold,settings);
       this.latches.set(hand.id,{closed,seen:now,midpoint});
