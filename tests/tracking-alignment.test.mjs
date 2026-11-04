@@ -96,9 +96,9 @@ function drawingContext(operations=[]){
   }
   return context;
 }
-function renderGuides(face){
+function renderGuides(face,scope='face'){
   const operations=[],context=drawingContext(operations),elements=new Map();
-  const values={scope:'face',tool:'stretch',headReach:'1.15',headShift:'0'};
+  const values={scope,tool:'stretch',headReach:'1.15',headShift:'0'};
   const element=id=>({
     checked:id==='guides',value:values[id]??'0',addEventListener(){},
     getContext:()=>context,
@@ -148,14 +148,15 @@ test('non-outline landmarks and bounding boxes cannot resize or shift the contou
   assert.deepEqual(engine.faceContour(changed),expected);
 });
 
-test('the visible camera guide draws the detected oval and eye/nose markers without an ellipse',()=>{
+test('the face guide draws the detected oval as dots without extra face markers',()=>{
   const face=trackedFace(),operations=renderGuides(face);
   assert.deepEqual(operations.filter(op=>op[0]==='moveTo'||op[0]==='lineTo'),ovalIndices.map((index,vertex)=>[
     vertex===0?'moveTo':'lineTo',face.points[index].x,face.points[index].y,
   ]));
   assert.equal(operations.filter(op=>op[0]==='closePath').length,1);
   assert.equal(operations.filter(op=>op[0]==='ellipse').length,0);
-  assert.deepEqual(operations.filter(op=>op[0]==='arc').map(op=>op.slice(1,3)),[1,33,263].map(index=>[face.points[index].x,face.points[index].y]));
+  assert.equal(operations.filter(op=>op[0]==='arc').length,0);
+  assert.ok(operations.some(op=>op[0]==='setLineDash'&&JSON.stringify(op[1])==='[1,5]'));
 });
 
 test('the illustrated demo keeps its ellipse fallback without pretending its sample grid is a detected oval',()=>{
@@ -189,4 +190,51 @@ test('snapshot landmarks align with mirrored and letterboxed camera pixels',()=>
 test('head outline is horizontally centered unless alignment is requested',()=>{
   assert.equal(headFrame(face).center.x,(face.left+face.right)/2);
   assert.deepEqual(headFrame(face),headFrame(face,1.15,0));
+});
+
+function pinchHand(x,y,opening=12){
+  const points=Array.from({length:21},()=>({x,y}));
+  points[4]={x:x-opening/2,y};points[8]={x:x+opening/2,y};
+  points[5]={x:x-45,y:y+60};points[17]={x:x+45,y:y+60};
+  return {id:'Left',points};
+}
+for(const scope of ['face','head'])test(`thumb-index pinch outside the ${scope} outline grabs, moves and releases`,()=>{
+  const state=new engine.FacePinchState(),face=trackedFace(),settings={scope,tool:'stretch'};
+  state.updateHands([pinchHand(850,450)],face,100,false,settings);
+  const grab=state.slots.get('Left');assert.equal(grab.mode,'active');
+  assert.deepEqual(grab.origin,{x:850,y:450});
+  state.updateHands([pinchHand(880,420)],face,160,false,settings);
+  assert.deepEqual(grab.delta,{x:30,y:-30});
+  assert.ok(state.warps(face)[0].delta.x>0);
+  state.updateHands([pinchHand(880,420,90)],face,220,false,settings);
+  assert.equal(grab.mode,'spring');
+});
+test('an already pinched hand starts when face tracking becomes available',()=>{
+  const state=new engine.FacePinchState(),hand=pinchHand(850,450);
+  state.updateHands([hand],null,100,false,{scope:'face'});assert.equal(state.slots.size,0);
+  state.updateHands([hand],trackedFace(),160,false,{scope:'face'});
+  assert.equal(state.slots.get('Left').mode,'active');
+});
+for(const tool of ['inflate','shrink','twist'])test(`${tool} responds to thumb-index pinch movement in both scopes`,()=>{
+  for(const scope of ['face','head']){
+    const state=new engine.FacePinchState(),face=trackedFace(),settings={scope,tool};
+    state.updateHands([pinchHand(850,450)],face,100,true,settings);
+    state.updateHands([pinchHand(900,450)],face,160,true,settings);
+    assert.equal(state.warps(face)[0].kind,tool);assert.notEqual(state.warps(face)[0].amount,0);
+    state.updateHands([pinchHand(900,450,90)],face,220,true,settings);
+    assert.equal(state.heldCount,1);
+  }
+});
+
+test('whole-head guide draws one dotted head boundary without a face overlay',()=>{
+  const operations=renderGuides(trackedFace(),'head');
+  assert.equal(operations.filter(op=>op[0]==='ellipse').length,1);
+  assert.equal(operations.filter(op=>op[0]==='lineTo'||op[0]==='arc').length,0);
+  assert.ok(operations.some(op=>op[0]==='setLineDash'&&JSON.stringify(op[1])==='[1,5]'));
+});
+test('other curled fingers cannot trigger an effect while thumb and index stay apart',()=>{
+  const state=new engine.FacePinchState(),face=trackedFace(),hand=pinchHand(850,450,90);
+  for(const index of [12,16,20])hand.points[index]={...hand.points[4]};
+  state.updateHands([hand],face,100,false,{scope:'head'});
+  assert.equal(state.slots.size,0);assert.equal(state.latches.get('Left').closed,false);
 });
