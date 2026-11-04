@@ -1,4 +1,4 @@
-import {W,H,FacePinchState,faceInfo,warpPixels,distance,headFrame,fitVideo,canvasLandmarks,faceContour} from './face-engine.mjs?v=pinch-controls-4';
+import {W,H,FacePinchState,faceInfo,warpPixels,distance,headFrame,fitVideo} from './face-engine.mjs';
 import {drawDemo} from './face-demo.mjs';
 const $=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');
 const video=$('video'),source=document.createElement('canvas'),raw=source.getContext('2d');
@@ -9,10 +9,8 @@ const warped=document.createElement('canvas');warped.width=640;warped.height=360
 const warpedCtx=warped.getContext('2d');
 const clean=document.createElement('canvas');clean.width=W;clean.height=H;
 const cleanCtx=clean.getContext('2d');
-const inference=document.createElement('canvas');inference.width=640;inference.height=360;
-const inferenceCtx=inference.getContext('2d');
 const output=warpedCtx.createImageData(640,360),state=new FacePinchState();
-let mode='off',stream=null,models=null,raf=0,lastDraw=0,lastInference=0;
+let mode='off',stream=null,models=null,raf=0,lastDraw=0,lastInference=0,lastFaceAt=0;
 let face=null,hands=[],lastVideo=-1,generation=0,loading=false,pointerActive=false;
 let edited=false,autoHiddenGuides=false;
 const hold=()=>$('hold').checked;
@@ -23,14 +21,14 @@ function syncSaved(){text('heldCount',String(state.heldCount));$('undo').disable
 function reset(){state.reset();pointerActive=false;edited=false;if(autoHiddenGuides)$('guides').checked=true;autoHiddenGuides=false;syncSaved();}
 function stop(clear=true){
   generation++;mode='off';cancelAnimationFrame(raf);stream?.getTracks().forEach(track=>track.stop());stream=null;
-  video.pause();video.srcObject=null;reset();hands=[];face=null;lastDraw=0;lastVideo=-1;lastInference=0;
+  video.pause();video.srcObject=null;reset();hands=[];face=null;lastDraw=0;lastVideo=-1;lastInference=0;lastFaceAt=0;
   loading=false;$('start').disabled=false;$('cameraToggle').disabled=false;$('start').textContent='Start camera';$('cameraToggle').textContent='Start camera';
   $('compare').checked=false;
-  if(clear){ctx.clearRect(0,0,W,H);cleanCtx.clearRect(0,0,W,H);$('welcome').hidden=false;text('stageLabel','CAMERA OFF');text('modeLabel',$('scope').value==='head'?'TWO HANDS · WHOLE HEAD':'TWO HANDS · FACE ONLY');text('faceStatus','Waiting');text('handStatus','—');text('effectStatus','Ready');}
+  if(clear){ctx.clearRect(0,0,W,H);cleanCtx.clearRect(0,0,W,H);$('welcome').hidden=false;text('stageLabel','CAMERA OFF');text('modeLabel','TWO HANDS · WHOLE HEAD');text('faceStatus','Waiting');text('handStatus','—');text('effectStatus','Ready');}
 }
 function demo(){
   stop(false);mode='demo';face=drawDemo(raw);$('welcome').hidden=true;
-  message('Demo: drag the face, or choose Whole head for hair and ears. Try the different effects, Big head, and Save photo. Start the camera to use your own head and hands.');
+  message('Demo: drag the hair, ears or face. Try the different effects, Big head, and Save photo. Start the camera to use your own head and hands.');
   text('stageLabel','ILLUSTRATED DEMO');text('modeLabel','DRAG THE HEAD');raf=requestAnimationFrame(render);
 }
 async function startCamera(){
@@ -58,8 +56,8 @@ async function startCamera(){
     stream=camera;video.srcObject=stream;await video.play();
     if(ticket!==generation)return;
     loading=false;mode='camera';$('start').disabled=false;$('cameraToggle').disabled=false;$('cameraToggle').textContent='Stop camera';$('start').textContent='Start camera';$('welcome').hidden=true;
-    text('stageLabel','LIVE · HEAD PLAYGROUND');text('modeLabel',$('scope').value==='head'?'TWO HANDS · WHOLE HEAD':'TWO HANDS · FACE ONLY');
-    message('Touch your thumb and index fingertip together anywhere in view, then hold and move to apply the selected effect. Open them to release. Choose Face only or Whole head.');
+    text('stageLabel','LIVE · HEAD PLAYGROUND');text('modeLabel','TWO HANDS · WHOLE HEAD');
+    message('Fit your whole head in the frame. Pinch near your hair, ear or face and slowly pull. Adjust Head coverage to fit your hairstyle.');
     raf=requestAnimationFrame(render);
   }catch(error){
     if(ticket!==generation)return;
@@ -68,42 +66,38 @@ async function startCamera(){
     message(errors[error.name]||error.message);
   }
 }
+function pixelPoints(points){const layout=fitVideo(video.videoWidth,video.videoHeight);return points.map(p=>({x:layout.x+($('mirror').checked?1-p.x:p.x)*layout.width,y:layout.y+p.y*layout.height}));}
 function detect(now){
-  // Freeze the exact displayed frame so both trackers see the same image.
-  inferenceCtx.drawImage(source,0,0,inference.width,inference.height);
-  const result=models.hand.detectForVideo(inference,now);
+  const result=models.hand.detectForVideo(video,now);
   const used=new Set();
   hands=result.landmarks.map((points,i)=>{
     let id=result.handedness[i]?.[0]?.categoryName||`hand${i}`;
     if(used.has(id))id+=i;used.add(id);
-    return {id,points:canvasLandmarks(points)};
+    return {id,points:pixelPoints(points)};
   });
-  const resultFace=models.face.detectForVideo(inference,now);
+  const resultFace=models.face.detectForVideo(video,now);
   if(resultFace.faceLandmarks[0]){
-    let pts=canvasLandmarks(resultFace.faceLandmarks[0]);
+    let pts=pixelPoints(resultFace.faceLandmarks[0]);
     if(face&&face.points.length===pts.length&&distance(face.points[1],pts[1])<70)pts=pts.map((p,i)=>({x:p.x*.7+face.points[i].x*.3,y:p.y*.7+face.points[i].y*.3}));
-    face=faceInfo(pts);
-  }else{face=null;for(const slot of state.slots.values())if(slot.mode==='active')slot.mode='spring';}
+    face=faceInfo(pts);lastFaceAt=now;
+  }else if(now-lastFaceAt>450){face=null;for(const slot of state.slots.values())if(slot.mode==='active')slot.mode='spring';}
   if(!$('compare').checked)state.updateHands(hands,face,now,hold(),settings());
 }
 function drawGuides(){
   if(!$('guides').checked)return;
   if(face){
-    ctx.save();ctx.strokeStyle='#d5c5ffcc';ctx.lineWidth=1.6;ctx.lineCap='round';ctx.setLineDash([1,5]);ctx.beginPath();
+    ctx.save();ctx.strokeStyle='#bcb2e360';ctx.lineWidth=1.5;ctx.setLineDash([4,7]);
+    ctx.beginPath();
     if($('scope').value==='head'){
       const frame=headFrame(face,+$('headReach').value,+$('headShift').value);
       ctx.ellipse(frame.center.x,frame.center.y,frame.rx,frame.ry,Math.atan2(frame.ux.y,frame.ux.x),0,Math.PI*2);
-    }else{
-      const contour=faceContour(face);
-      if(contour){ctx.moveTo(contour[0].x,contour[0].y);for(const p of contour.slice(1))ctx.lineTo(p.x,p.y);ctx.closePath();}
-      else ctx.ellipse((face.left+face.right)/2,(face.top+face.bottom)/2,face.width/2,face.height/2,0,0,Math.PI*2);
-    }
+    }else ctx.ellipse((face.left+face.right)/2+face.width*(+$('headShift').value),(face.top+face.bottom)/2,face.width/2+18,face.height/2+10,0,0,Math.PI*2);
     ctx.stroke();ctx.restore();
   }
   for(const hand of hands){
     const p=hand.points,mid={x:(p[4].x+p[8].x)/2,y:(p[4].y+p[8].y)/2};
     const isClosed=state.latches.get(hand.id)?.closed;
-    ctx.strokeStyle=isClosed?'#e4c2ff':'#ddd9e8';ctx.lineWidth=2;
+    ctx.strokeStyle=isClosed?'#e4c2ff':'#9ce4c6';ctx.lineWidth=2;
     ctx.beginPath();ctx.moveTo(p[4].x,p[4].y);ctx.lineTo(p[8].x,p[8].y);ctx.stroke();
     ctx.beginPath();ctx.arc(mid.x,mid.y,isClosed?9:6,0,Math.PI*2);ctx.stroke();
   }
@@ -122,7 +116,10 @@ function render(now){
       if(video.currentTime!==lastVideo&&now-lastInference>48){detect(now);lastInference=now;lastVideo=video.currentTime;}
     }
     state.tick(face,dt,hold());
-    if(state.slots.size)edited=true;
+    if(state.slots.size&&!edited){
+      edited=true;
+      if($('guides').checked){$('guides').checked=false;autoHiddenGuides=true;}
+    }
     const warps=state.warps(face,+$('strength').value,+$('area').value);
     if(!$('compare').checked&&warps.some(w=>Math.hypot(w.delta.x,w.delta.y)>.3||Math.abs(w.amount)>.001)){
       smallCtx.drawImage(source,0,0,640,360);
@@ -138,10 +135,10 @@ function render(now){
       const f=headFrame(face,+$('headReach').value,+$('headShift').value),layout=fitVideo(video.videoWidth,video.videoHeight);
       const ex=Math.hypot(f.rx*f.ux.x,f.ry*f.uy.x),ey=Math.hypot(f.rx*f.ux.y,f.ry*f.uy.y);
       const outside=f.center.x-ex<layout.x||f.center.x+ex>layout.x+layout.width||f.center.y-ey<layout.y||f.center.y+ey>layout.y+layout.height;
-      text('modeLabel',$('scope').value==='head'?(outside?'STEP BACK · FIT WHOLE HEAD':'TWO HANDS · WHOLE HEAD'):'TWO HANDS · FACE ONLY');
+      text('modeLabel',outside?'STEP BACK · FIT WHOLE HEAD':$('scope').value==='head'?'TWO HANDS · WHOLE HEAD':'TWO HANDS · FACE ONLY');
     }
     const active=[...state.slots.values()].some(s=>s.mode==='active'),held=state.heldCount;
-    const status=$('compare').checked?'Original view':active?(held?`Editing · ${held} saved`:'Editing'):held?`${held} effect${held===1?'':'s'} held`:warps.length?'Springing back':state.rejected?'Show your face, then pinch thumb + index':mode==='demo'?'Drag the head':face?($('scope').value==='head'?'Pinch thumb + index to grab your head':'Pinch thumb + index to grab your face'):'Show your face to track your head';
+    const status=$('compare').checked?'Original view':active?(held?`Editing · ${held} saved`:'Editing'):held?`${held} effect${held===1?'':'s'} held`:warps.length?'Springing back':state.rejected?'Pinch inside the outline':mode==='demo'?'Drag the head':face?'Pinch near your head':'Show your face to track your head';
     text('effectStatus',status);
     syncSaved();
   }catch(error){stop();message(`Tracking stopped: ${error.message}. Try starting again, or use the demo.`);}
@@ -188,9 +185,9 @@ $('compare').addEventListener('change',()=>{
   state.latches.clear();pointerActive=false;
 });
 function toolHint(){
-  const hints={stretch:'Pinch thumb and index finger, then hold and pull to stretch.',inflate:'Pinch and move to inflate the area around your grab.',shrink:'Pinch and move to shrink the area around your grab.',twist:'Pinch and move sideways to twist. Left and right swirl in opposite directions.'};
-  text('toolHint',`${hints[$('tool').value]} ${$('scope').value==='head'?'Hair and ears are editable too. Increase Head coverage for taller hair.':'Face only targets facial features. Pinch anywhere in view.'}`);
-  $('headReach').disabled=$('scope').value!=='head';$('headShift').disabled=$('scope').value!=='head';
+  const hints={stretch:'Pinch and pull to stretch.',inflate:'Pinch and move to inflate the area around your grab.',shrink:'Pinch and move to shrink the area around your grab.',twist:'Pinch and move sideways to twist. Left and right swirl in opposite directions.'};
+  text('toolHint',`${hints[$('tool').value]} ${$('scope').value==='head'?'Hair and ears are editable too. Increase Head coverage for taller hair.':'Face only limits where a new grab can start.'}`);
+  $('headReach').disabled=$('scope').value!=='head';
 }
 $('tool').addEventListener('change',toolHint);$('scope').addEventListener('change',toolHint);
 $('headReach').addEventListener('input',()=>text('headReachValue',`${Number($('headReach').value).toFixed(2)}×`));
@@ -214,5 +211,3 @@ window.addEventListener('keydown',event=>{
   if(event.key==='Escape'){stop();message('Camera stopped.');}
 });
 window.addEventListener('pagehide',()=>stop());
-
-toolHint();
